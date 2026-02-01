@@ -41,23 +41,52 @@ const wss = new WebSocket.Server({ noServer: true });
 
 const users = new Map();
 
+function broadcastUserList() {
+  const list = [...users.values()];
+  const payload = { type: "users", users: list };
+  const msg = JSON.stringify(payload);
+  const clientCount = wss.clients.size;
+  let sentCount = 0;
+  wss.clients.forEach(c => {
+    if (c.readyState === WebSocket.OPEN) {
+      c.send(msg);
+      sentCount++;
+    }
+  });
+  console.log("[SERVER] broadcastUserList | list:", list, "| clients:", clientCount, "| sent:", sentCount, "| payload:", msg.substring(0, 120));
+}
+
 server.on("upgrade", (req, socket, head) => {
+  console.log("[SERVER] WebSocket upgrade request");
   wss.handleUpgrade(req, socket, head, ws => {
     wss.emit("connection", ws, req);
   });
 });
 
 wss.on("connection", ws => {
-  console.log("[WS] Client connected");
+  console.log("[SERVER] WebSocket connection OPEN");
 
   ws.on("message", data => {
     try {
       const msg = JSON.parse(data.toString());
 
-      console.log("[WS] RECV:", msg);
+      console.log("[SERVER] RECV:", msg.type, JSON.stringify(msg));
 
       if (msg.type === "register") {
-        users.set(ws, msg.userId);
+        const name = msg.displayName || msg.userId || ws.userId;
+
+        if (!name) {
+          console.log("[SERVER] REGISTER FAILED - no name");
+          return;
+        }
+
+        users.set(ws, name);
+
+        console.log("[SERVER] USER REGISTERED:", name);
+        console.log("[SERVER] USERS ONLINE:", [...users.values()]);
+
+        broadcastUserList();
+        return;
       }
 
       if (msg.type === "message") {
@@ -84,8 +113,10 @@ wss.on("connection", ws => {
   });
 
   ws.on("close", () => {
+    const name = users.get(ws);
     users.delete(ws);
-    console.log("[WS] Client disconnected");
+    console.log("[SERVER] USER DISCONNECTED:", name, "| users Map size:", users.size);
+    broadcastUserList();
   });
 });
 
