@@ -50,6 +50,21 @@ wss.on("connection", ws => {
         users.set(ws, msg.userId);
         console.log("[SERVER] registered:", msg.userId);
         broadcastUsers();
+      } else if (msg.type === "message") {
+        const from = users.get(ws);
+        if (from != null && msg.text != null) {
+          const payload = JSON.stringify({
+            type: "message",
+            from,
+            text: msg.text,
+            time: Date.now()
+          });
+          wss.clients.forEach(c => {
+            if (c.readyState === WebSocket.OPEN) {
+              c.send(payload);
+            }
+          });
+        }
       }
     } catch (e) {
       console.error("[SERVER] parse error:", e);
